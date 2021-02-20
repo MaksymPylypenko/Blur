@@ -1,0 +1,13 @@
+canvas {
+    margin: auto;
+    position: absolute;
+    top:0;bottom:0; /* vertical center */
+    left:0;right:0; /* horizontal center */
+}
+
+
+html, body{
+	background-color: black;
+	margin:0;
+	padding:0;
+}
