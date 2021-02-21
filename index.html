@@ -6,9 +6,75 @@
     <link rel="stylesheet" href="./webgl.css" type="text/css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gl-matrix/2.8.1/gl-matrix-min.js"></script>
     <script src="webgl-demo.js" defer></script>
+
+     <!-- vertex shader -->
+     <script id="vertex-shader" type="x-shader/x-vertex">
+      attribute vec2 vPosition;
+      varying highp vec2 blurTextureCoords[9];
+      uniform highp vec2 pixelSize;
+      uniform int stage;
+      uniform highp float flipY;
+
+      void main(void) {
+        gl_Position = vec4(vPosition,0.0,1.0);
+        highp vec2 uv; 
+        
+        uv = vPosition; 
+        uv.y = uv.y * flipY; 
+        uv = uv*0.5+0.5; 
+
+        for(int i=-4; i<=4; i++){
+            float i_float = float(i);
+            if( mod(float(stage), 2.0) == 0.0){
+              blurTextureCoords[i+4] = uv + vec2(pixelSize.x * i_float,0.0);
+            }
+            else{
+              blurTextureCoords[i+4] = uv + vec2(0.0, pixelSize.y * i_float);
+            }            
+        }
+      }
+    </script>
+
+    <!-- fragment shader -->
+    <script  id="fragment-shader" type="x-shader/x-fragment">
+        varying highp vec2 blurTextureCoords[9];
+        uniform sampler2D videoTexture;  // Tells the shader whcih texture unit  to use. 0 by default.
+
+        void main(void){    
+          highp vec4 sum = vec4(0.0);
+
+          // http://dev.theomader.com/gaussian-kernel-calculator/
+          // sigma = 3, kernel size= 9
+
+          sum += texture2D(videoTexture, blurTextureCoords[0]) * 0.028532;
+          sum += texture2D(videoTexture, blurTextureCoords[1]) * 0.067234;
+          sum += texture2D(videoTexture, blurTextureCoords[2]) * 0.124009;
+          sum += texture2D(videoTexture, blurTextureCoords[3]) * 0.179044;
+
+          sum += texture2D(videoTexture, blurTextureCoords[4]) * 0.20236;
+          
+          sum += texture2D(videoTexture, blurTextureCoords[5]) * 0.179044;
+          sum += texture2D(videoTexture, blurTextureCoords[6]) * 0.124009;
+          sum += texture2D(videoTexture, blurTextureCoords[7]) * 0.067234;
+          sum += texture2D(videoTexture, blurTextureCoords[8]) * 0.028532;
+
+          gl_FragColor = vec4(sum.rgb, 1.0);
+        }
+    </script> 
   </head>
 
   <body>
+
+    <div id="radius" class="slider">
+      <label>pixel size</label>
+      <input id="radius_input" class="slider_range" type="range" value="2" min="0" max="10">
+      <output id="radius_value" class="slider_value">2</output>
+    </div>    
+
+
     <canvas id="glcanvas"></canvas>
+    
+    
+
   </body>
 </html>

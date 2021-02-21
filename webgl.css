@@ -3,6 +3,7 @@ canvas {
     position: absolute;
     top:0;bottom:0; /* vertical center */
     left:0;right:0; /* horizontal center */
+    z-index: 1;
 }
 
 
@@ -11,3 +12,65 @@ html, body{
 	margin:0;
 	padding:0;
 }
+
+
+
+/* dsgdg */
+
+*, *:before, *:after {
+	box-sizing: border-box;
+}
+
+
+.slider {
+    color:white;
+    font-size:large;
+    font-weight: bold;
+    font-family:'Segoe UI';
+    z-index: 2;
+    position:absolute;
+    top:0px;
+    right:0px;
+	margin: 40px;
+}
+
+.slider {
+	width: 400px;
+}
+
+.slider_range {
+	-webkit-appearance: none;
+	width: calc(100% - (200px));
+	height: 10px;
+	border-radius: 5px;
+	background: #535353;
+	outline: none;
+	padding: 0;
+	margin: 10px;
+}
+
+.slider_range::-webkit-slider-thumb {
+	appearance: none;
+	width: 23px;
+	height: 23px;
+	border-radius: 50%;
+	background: #ffffff;
+	cursor: pointer;
+}
+
+.slider_range::-webkit-slider-thumb:hover {
+	background: #00fff2;
+}
+
+.slider_value {
+	display: inline-block;
+	position: relative;
+	width: 60px;
+	color: #fff;
+	line-height: 20px;
+	text-align: center;
+	border-radius: 3px;
+	background: #2c3e50;
+	padding: 5px 10px;
+}
+

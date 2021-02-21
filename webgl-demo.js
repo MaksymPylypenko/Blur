@@ -1,170 +1,184 @@
-// window.addEventListener('resize', function() {
-//   renderer.setSize(window.innerWidth, window.innerHeight);
-// });
-
 // will set to true when video can be copied to texture
 var copyVideo = false;
 
+
+// Slider
+var radius_input = document.getElementById('radius_input');
+var radius_value = document.getElementById('radius_value');
+
+radius_input.oninput = function() {
+    radius_value.value = this.value;
+};
+
+
+// Start
 main();
 
-//
-// Start here
-//
 function main() {
-  setupVideo('video.mp4');
-}
+    const video = document.createElement('video');
+    var url = 'video.mp4';
 
+    var playing = false;
+    var timeupdate = false;
 
-function setupVideo(url) {
-  const video = document.createElement('video');
+    video.autoplay = true;
+    video.muted = true;
+    video.loop = true;
 
-  var playing = false;
-  var timeupdate = false;
+    // Waiting for these 2 events ensures
+    // there is data in the video
 
-  video.autoplay = true;
-  video.muted = true;
-  video.loop = true;
+    video.addEventListener('playing', function() {
+        playing = true;
+        checkReady();
+    }, true);
 
-  // Waiting for these 2 events ensures
-  // there is data in the video
+    video.addEventListener('timeupdate', function() {
+        timeupdate = true;
+        checkReady();
+    }, true);
 
-  video.addEventListener('playing', function() {
-     playing = true;
-     checkReady();
-  }, true);
+    // Can start rendering when we know 
+    // resolution of the video
 
-  video.addEventListener('timeupdate', function() {
-     timeupdate = true;
-     checkReady();
-  }, true);
+    video.addEventListener('loadedmetadata', function(e) {
+        setupCanvas(video); 
+    }, true);
 
-  video.src = url;
-  video.play();
+    video.src = url;
+    video.play();
 
-  function checkReady() {
-    if (playing && timeupdate) {
-      copyVideo = true;
+    function checkReady() {
+        if (playing && timeupdate) {
+            copyVideo = true;
+        }
     }
-  }
-
-  video.addEventListener('loadedmetadata', function(e){  
-    setupCanvas(video);
-  }, false);
+    return video;
 }
 
 
+function setupCanvas(video) {
+    const canvas = document.querySelector('#glcanvas');
 
+    var image = {
+      x: video.videoWidth,
+      y: video.videoHeight,
+    };
 
-function setupCanvas(video){
-  const canvas = document.querySelector('#glcanvas');
+    // image.x/=2;
+    // image.y/=2;
 
-  const y = video.videoHeight; //1080;
-  const x = video.videoWidth; //1920;
+    canvas.width = image.x;
+    canvas.height = image.y;
 
-  // Original geometry
-  canvas.width = x; 
-  canvas.height = y;
+    // Fill the contect preserving the original ratio
+    canvas.style.width = "100vw";
+    canvas.style.height = 100 * image.y / image.x + "vw";
+    canvas.style.maxHeight = "100vh";
+    canvas.style.maxWidth = 100 * image.x / image.y + "vh";
 
-  // Fill the contect preserving the original ratio
-  canvas.style.width = "100vw";
-  canvas.style.height = 100*y/x+"vw";
-  canvas.style.maxHeight = "100vh";
-  canvas.style.maxWidth = 100*x/y+"vh";
+    const gl = canvas.getContext('webgl');
+
+    // If we don't have a GL context, give up now
+
+    if (!gl) {
+        alert('Unable to initialize WebGL. Your browser or machine may not support it.');
+        return;
+    }
   
-  const gl = canvas.getContext('webgl');
+    // Initialize a shader program
 
-  // If we don't have a GL context, give up now
+    const vertexSource = document.getElementById("vertex-shader").text;
+    const fragmentSource = document.getElementById("fragment-shader").text;
+    shaderProgram = linkShaders(gl, vertexSource, fragmentSource);  
 
-  if (!gl) {
-    alert('Unable to initialize WebGL. Your browser or machine may not support it.');
-    return;
-  }
+    // Look up which attributes & uniform variables 
+    // our shader program is using
 
-  // Vertex shader program
+    const programInfo = {
+        attribLocations: {
+            vertexPosition: gl.getAttribLocation(shaderProgram, 'vPosition'),
+        },
+        uniformLocations: {
+            videoTexture: gl.getUniformLocation(shaderProgram, 'videoTexture'),
+            pixelSize: gl.getUniformLocation(shaderProgram, 'pixelSize'),
+            stage: gl.getUniformLocation(shaderProgram, 'stage'),
+            flipY: gl.getUniformLocation(shaderProgram, 'flipY'),
+        }
+    };
 
-  const vsSource = `
-    attribute vec4 aVertexPosition;
-    attribute vec2 aTextureCoord;
-    varying highp vec2 vTextureCoord;
+    // Here's where we call the routine that builds all the
+    // objects we'll be drawing.
 
-    void main(void) {
-      gl_Position = aVertexPosition;
-      vTextureCoord = aTextureCoord;
+    bindBuffers(gl, programInfo.attribLocations);
+    gl.useProgram(shaderProgram); 
+    
+    // ... 
+    // https://webglfundamentals.org/webgl/lessons/webgl-image-processing-continued.html
+    
+    // create 2 textures and attach them to framebuffers.
+    var textures = [];
+    var framebuffers = [];
+    for (var ii = 0; ii < 2; ++ii) {
+      var texture = initTexture(gl);
+      textures.push(texture);
+  
+      // make the texture the same size as the image
+      gl.texImage2D(
+          gl.TEXTURE_2D, 0, gl.RGBA, image.x, image.y, 0,
+          gl.RGBA, gl.UNSIGNED_BYTE, null);
+  
+      // Create a framebuffer
+      var fbo = gl.createFramebuffer();
+      framebuffers.push(fbo);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  
+      // Attach a texture to it.
+      gl.framebufferTexture2D(
+          gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
     }
-  `;
+          
+    // ...
 
-  // Fragment shader program
+    function render() {
 
-  const fsSource = `
-    varying highp vec2 vTextureCoord;
+        gl.uniform2fv(programInfo.uniformLocations.pixelSize, [radius_value.value*1.0/image.x, radius_value.value*1.0/image.y]);
+       
+        if (copyVideo) {
+            updateTexture(gl, textures[1], video);
+        }
 
-    uniform sampler2D uSampler;
+        // link framebuffer
+        // link uniforms
+        // draw
 
-    void main(void) {
-      //highp vec4 texelColor = texture2D(uSampler, vTextureCoord);
-      //gl_FragColor = vec4(texelColor.rgb, texelColor.a);
+        // 1. image --> effect 1 --> texture 1.
 
-      highp vec2 offs_blur = vec2(1.0/1920.0*5.0, 1.0/1080.0*5.0);
-
-      gl_FragColor = vec4(0.0);
-      gl_FragColor += texture2D(uSampler, vTextureCoord + vec2(-offs_blur.x, -offs_blur.y))*0.0625;
-      gl_FragColor += texture2D(uSampler, vTextureCoord + vec2(         0.0, -offs_blur.y))*0.125;  
-      gl_FragColor += texture2D(uSampler, vTextureCoord + vec2( offs_blur.x, -offs_blur.y))*0.0625;
-
-      gl_FragColor += texture2D(uSampler, vTextureCoord + vec2(-offs_blur.x,          0.0))*0.125;
-      gl_FragColor += texture2D(uSampler, vTextureCoord + vec2(         0.0,          0.0))*0.25;   
-      gl_FragColor += texture2D(uSampler, vTextureCoord + vec2( offs_blur.x,          0.0))*0.125;  
+         gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffers[0]);    
+         gl.uniform1i(programInfo.uniformLocations.stage, 0);
+         gl.uniform1f(programInfo.uniformLocations.flipY, 1.0);
+         gl.bindTexture(gl.TEXTURE_2D, textures[1]);
+         gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
 
 
-      gl_FragColor += texture2D(uSampler, vTextureCoord + vec2(-offs_blur.x, offs_blur.y))*0.0625;
-      gl_FragColor += texture2D(uSampler, vTextureCoord + vec2(         0.0, offs_blur.y))*0.125;   
-      gl_FragColor += texture2D(uSampler, vTextureCoord + vec2( offs_blur.x, offs_blur.y))*0.0625;  
+         gl.bindFramebuffer(gl.FRAMEBUFFER, null);    
+         gl.uniform1i(programInfo.uniformLocations.stage, 1);
+         gl.uniform1f(programInfo.uniformLocations.flipY, -1.0);
+         gl.bindTexture(gl.TEXTURE_2D, textures[0]);
+         gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
+
+     
+        // 2. texture 1 --> effect 2 --> texture 2.
+
+        // 3. texture 2 --> no effects --> canvas
+
+
+
+
+        
+        requestAnimationFrame(render);
     }
-  `;
-
-  // Initialize a shader program; this is where all the lighting
-  // for the vertices and so forth is established.
-  const shaderProgram = initShaderProgram(gl, vsSource, fsSource);
-
-  // Collect all the info needed to use the shader program.
-  // Look up which attributes our shader program is using
-  // for aVertexPosition, aVertexNormal, aTextureCoord,
-  // and look up uniform locations.
-  const programInfo = {
-    program: shaderProgram,
-    attribLocations: {
-      vertexPosition: gl.getAttribLocation(shaderProgram, 'aVertexPosition'),
-      vertexNormal: gl.getAttribLocation(shaderProgram, 'aVertexNormal'),
-      textureCoord: gl.getAttribLocation(shaderProgram, 'aTextureCoord'),
-    },
-    uniformLocations: {
-      uSampler: gl.getUniformLocation(shaderProgram, 'uSampler'),
-    }
-  };
-
-  // Here's where we call the routine that builds all the
-  // objects we'll be drawing.
-
-  const buffers = initBuffers(gl);
-  const texture = initTexture(gl);
-
-  var then = 0;
-
-  // Draw the scene repeatedly
-  function render(now) {
-    now *= 0.001;  // convert to seconds
-    const deltaTime = now - then;
-    then = now;
-
-    if (copyVideo) {
-      updateTexture(gl, texture, video);
-    }
-
-    drawScene(gl, programInfo, buffers, texture, deltaTime);
-
     requestAnimationFrame(render);
-  }
-  requestAnimationFrame(render);
 
 }
 
@@ -175,239 +189,109 @@ function setupCanvas(video){
 // Initialize the buffers we'll need. 
 function initBuffers(gl) {
 
-  // Set up positions to cover the whole canvas
+    const positions = [1.0, 1.0, -1.0, 1.0, 1.0, -1.0, -1.0, -1.0];
+    const indices = [ 0,1,3,0,3,2 ];
 
-  const positionBuffer = gl.createBuffer();
-  gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+    const positionBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
 
-  const positions = [
-    -1,  1,
-     1,  1,
-     1, -1,
-    -1, -1,
-  ];
+    const indexBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,new Uint16Array(indices), gl.STATIC_DRAW);
 
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
-
-
-  // Now set up the texture coordinates
-
-  const textureCoordBuffer = gl.createBuffer();
-  gl.bindBuffer(gl.ARRAY_BUFFER, textureCoordBuffer);
-
-  const textureCoordinates = [
-    0.0,  0.0,
-    1.0,  0.0,
-    1.0,  1.0,
-    0.0,  1.0,
-  
-  ];
-
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(textureCoordinates),
-                gl.STATIC_DRAW);
-
-  // Build the element array buffer; this specifies the indices
-  // into the vertex arrays for each face's vertices.
-
-  const indexBuffer = gl.createBuffer();
-  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
-
-  // This array defines the square (canvas) as two triangles, using the
-  // indices into the vertex array to specify each triangle's
-  // position.
-
-  const indices = [
-    0,1,2, 0,2,3,
-  ];
-
-  // Now send the element array to GL
-
-  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,
-      new Uint16Array(indices), gl.STATIC_DRAW);
-
-  return {
-    position: positionBuffer,
-    textureCoord: textureCoordBuffer,
-    indices: indexBuffer,
-  };
+    return {
+        position: positionBuffer,
+        indices: indexBuffer,
+    };
 }
 
 //
 // Initialize a texture.
 //
-function initTexture(gl, url) {
-  const texture = gl.createTexture();
-  gl.bindTexture(gl.TEXTURE_2D, texture);
-
-  // Because video havs to be download over the internet
-  // they might take a moment until it's ready so
-  // put a single pixel in the texture so we can
-  // use it immediately.
-  const level = 0;
-  const internalFormat = gl.RGBA;
-  const width = 1;
-  const height = 1;
-  const border = 0;
-  const srcFormat = gl.RGBA;
-  const srcType = gl.UNSIGNED_BYTE;
-  const pixel = new Uint8Array([0, 0, 0, 0]);  // black
-  gl.texImage2D(gl.TEXTURE_2D, level, internalFormat,
-                width, height, border, srcFormat, srcType,
-                pixel);
-
-  // Turn off mips and set  wrapping to clamp to edge so it
-  // will work regardless of the dimensions of the video.
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-
-  return texture;
+function initTexture(gl) {
+  
+    var texture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+ 
+    // Set up texture so we can render any size image and so we are
+    // working with pixels.
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+ 
+    return texture;
 }
 
 //
 // copy the video texture
 //
 function updateTexture(gl, texture, video) {
-  const level = 0;
-  const internalFormat = gl.RGBA;
-  const srcFormat = gl.RGBA;
-  const srcType = gl.UNSIGNED_BYTE;
-  gl.bindTexture(gl.TEXTURE_2D, texture);
-  gl.texImage2D(gl.TEXTURE_2D, level, internalFormat,
-                srcFormat, srcType, video);
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video);
 }
 
 
 //
-// Draw the scene.
+// 
 //
-function drawScene(gl, programInfo, buffers, texture, deltaTime) {
+function bindBuffers(gl, attribLocations){
 
-  gl.clearColor(0.0, 0.0, 0.0, 1.0);  // Clear to black, fully opaque
-  gl.clearDepth(1.0);                 // Clear everything
-  gl.enable(gl.DEPTH_TEST);           // Enable depth testing
-  gl.depthFunc(gl.LEQUAL);            // Near things obscure far things
+  const positions = [1.0, 1.0, -1.0, 1.0, 1.0, -1.0, -1.0, -1.0];
+  const indices = [ 0,1,3,0,3,2 ];
 
+  const positionBuffer = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
 
-  // Clear the canvas before we start drawing on it.
-
-  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  const indexBuffer = gl.createBuffer();
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,new Uint16Array(indices), gl.STATIC_DRAW);
 
   // Tell WebGL how to pull out the positions from the position
   // buffer into the vertexPosition attribute
   {
-    const numComponents = 2;
-    const type = gl.FLOAT;
-    const normalize = false;
-    const stride = 0;
-    const offset = 0;
-    gl.bindBuffer(gl.ARRAY_BUFFER, buffers.position);
-    gl.vertexAttribPointer(
-        programInfo.attribLocations.vertexPosition,
-        numComponents,
-        type,
-        normalize,
-        stride,
-        offset);
-    gl.enableVertexAttribArray(
-        programInfo.attribLocations.vertexPosition);
+    gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+    gl.vertexAttribPointer(attribLocations.vertexPosition,2,gl.FLOAT,false,0,0);
+    gl.enableVertexAttribArray(attribLocations.vertexPosition);
   }
-
-  // Tell WebGL how to pull out the texture coordinates from
-  // the texture coordinate buffer into the textureCoord attribute.
-  {
-    const numComponents = 2;
-    const type = gl.FLOAT;
-    const normalize = false;
-    const stride = 0;
-    const offset = 0;
-    gl.bindBuffer(gl.ARRAY_BUFFER, buffers.textureCoord);
-    gl.vertexAttribPointer(
-        programInfo.attribLocations.textureCoord,
-        numComponents,
-        type,
-        normalize,
-        stride,
-        offset);
-    gl.enableVertexAttribArray(
-        programInfo.attribLocations.textureCoord);
-  }
-
 
   // Tell WebGL which indices to use to index the vertices
-  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffers.indices);
-
-  // Tell WebGL to use our program when drawing
-
-  gl.useProgram(programInfo.program);
-
-
-  // Specify the texture to map.
-
-  // Tell WebGL we want to affect texture unit 0
-  gl.activeTexture(gl.TEXTURE0);
-
-  // Bind the texture to texture unit 0
-  gl.bindTexture(gl.TEXTURE_2D, texture);
-
-  // Tell the shader we bound the texture to texture unit 0
-  gl.uniform1i(programInfo.uniformLocations.uSampler, 0);
-
-  {
-    const vertexCount = 6;
-    const type = gl.UNSIGNED_SHORT;
-    const offset = 0;
-    gl.drawElements(gl.TRIANGLES, vertexCount, type, offset);
-  }
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
 }
 
 //
 // Initialize a shader program, so WebGL knows how to draw our data
 //
-function initShaderProgram(gl, vsSource, fsSource) {
-  const vertexShader = loadShader(gl, gl.VERTEX_SHADER, vsSource);
-  const fragmentShader = loadShader(gl, gl.FRAGMENT_SHADER, fsSource);
+function linkShaders(gl, vsSource, fsSource) {
+    const vertexShader = loadShader(gl, gl.VERTEX_SHADER, vsSource);
+    const fragmentShader = loadShader(gl, gl.FRAGMENT_SHADER, fsSource);
+    const shaderProgram = gl.createProgram();
 
-  // Create the shader program
+    gl.attachShader(shaderProgram, vertexShader);
+    gl.attachShader(shaderProgram, fragmentShader);
+    gl.linkProgram(shaderProgram);
 
-  const shaderProgram = gl.createProgram();
-  gl.attachShader(shaderProgram, vertexShader);
-  gl.attachShader(shaderProgram, fragmentShader);
-  gl.linkProgram(shaderProgram);
-
-  // If creating the shader program failed, alert
-
-  if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
-    alert('Unable to initialize the shader program: ' + gl.getProgramInfoLog(shaderProgram));
-    return null;
-  }
-
-  return shaderProgram;
+    if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
+        alert('Unable to initialize the shader program: ' + gl.getProgramInfoLog(shaderProgram));
+        return null;
+    }     
+    return shaderProgram;
 }
 
 //
 // creates a shader of the given type, uploads the source and
 // compiles it.
 //
-function loadShader(gl, type, source) {
-  const shader = gl.createShader(type);
-
-  // Send the source to the shader object
-
-  gl.shaderSource(shader, source);
-
-  // Compile the shader program
-
-  gl.compileShader(shader);
-
-  // See if it compiled successfully
-
-  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-    alert('An error occurred compiling the shaders: ' + gl.getShaderInfoLog(shader));
-    gl.deleteShader(shader);
-    return null;
-  }
-
-  return shader;
+function loadShader(gl, type, source) {  
+    const shader = gl.createShader(type);
+    gl.shaderSource(shader, source);
+    gl.compileShader(shader);
+    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        alert('An error occurred compiling the shaders: ' + gl.getShaderInfoLog(shader));
+        gl.deleteShader(shader);
+        return null;
+    }
+    return shader;
 }
-
