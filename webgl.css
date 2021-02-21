@@ -22,25 +22,33 @@ html, body{
 }
 
 
+#radius{
+	top:0px;
+}
+
+#rounds{
+	top:50px;
+}
+
 .slider {
     color:white;
     font-size:large;
     font-weight: bold;
     font-family:'Segoe UI';
     z-index: 2;
-    position:absolute;
-    top:0px;
-    right:0px;
+    position:absolute;    
 	margin: 40px;
+	right:0px;
 }
 
 .slider {
-	width: 400px;
+	width: 300px;
+	text-align: right;
 }
 
 .slider_range {
 	-webkit-appearance: none;
-	width: calc(100% - (200px));
+	width: 100px;
 	height: 10px;
 	border-radius: 5px;
 	background: #535353;

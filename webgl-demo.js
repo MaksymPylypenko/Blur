@@ -2,13 +2,21 @@
 var copyVideo = false;
 
 
-// Slider
+// Sliders
 var radius_input = document.getElementById('radius_input');
 var radius_value = document.getElementById('radius_value');
 
 radius_input.oninput = function() {
     radius_value.value = this.value;
 };
+
+var rounds_input = document.getElementById('rounds_input');
+var rounds_value = document.getElementById('rounds_value');
+
+rounds_input.oninput = function() {
+  rounds_value.value = this.value;
+};
+
 
 
 // Start
@@ -140,6 +148,14 @@ function setupCanvas(video) {
           
     // ...
 
+    function draw(from, to, stage){
+      gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffers[to]);    
+      gl.uniform1i(programInfo.uniformLocations.stage, stage==-1 ? 1 : stage);
+      gl.uniform1f(programInfo.uniformLocations.flipY, stage==-1 ? -1.0:1.0);
+      gl.bindTexture(gl.TEXTURE_2D, textures[from]);             
+      gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
+    }
+
     function render() {
 
         gl.uniform2fv(programInfo.uniformLocations.pixelSize, [radius_value.value*1.0/image.x, radius_value.value*1.0/image.y]);
@@ -148,40 +164,23 @@ function setupCanvas(video) {
             updateTexture(gl, textures[1], video);
         }
 
-        // link framebuffer
-        // link uniforms
-        // draw
-
-        // 1. image --> effect 1 --> texture 1.
-
-         gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffers[0]);    
-         gl.uniform1i(programInfo.uniformLocations.stage, 0);
-         gl.uniform1f(programInfo.uniformLocations.flipY, 1.0);
-         gl.bindTexture(gl.TEXTURE_2D, textures[1]);
-         gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
-
-
-         gl.bindFramebuffer(gl.FRAMEBUFFER, null);    
-         gl.uniform1i(programInfo.uniformLocations.stage, 1);
-         gl.uniform1f(programInfo.uniformLocations.flipY, -1.0);
-         gl.bindTexture(gl.TEXTURE_2D, textures[0]);
-         gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
-
-     
-        // 2. texture 1 --> effect 2 --> texture 2.
-
-        // 3. texture 2 --> no effects --> canvas
-
-
-
-
-        
+        var rounds = rounds_value.value;
+        for(i=1; i<=rounds; ++i){
+          if(i==rounds){
+            draw(1,0,0);
+          }
+          else{
+            draw(1,0,0);
+            draw(0,1,1);
+          }          
+        }        
+        draw(0,null,-1.0); // drawing to canvas, framebuffer = null
+          
         requestAnimationFrame(render);
     }
     requestAnimationFrame(render);
 
 }
-
 
 //
 // initBuffers
