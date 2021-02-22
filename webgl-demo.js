@@ -3,6 +3,8 @@ var copyVideo = false;
 
 
 // UI
+var textureChanged = false;
+
 var radius_input = document.getElementById('radius_input');
 var radius_value = document.getElementById('radius_value');
 
@@ -23,9 +25,15 @@ var downscalePrev = downscale_value; // tracking changes, to avoid reinitializin
 
 downscale_input.oninput = function() {
   downscale_value.value = this.value;
+  textureChanged = true;
 };
 
 const fps_field = document.getElementById('fps');
+
+var linearSampling_checkbox = document.getElementById('ls_checkbox');
+linearSampling_checkbox.onchange = function() {
+  textureChanged = true;
+}
 
 
 // Start
@@ -75,7 +83,7 @@ function main() {
 
 
 function processVideo(video) {
- 
+
     // Performance indicator
     var elapsedTime = 0;
     var frameCount = 0;
@@ -98,6 +106,8 @@ function processVideo(video) {
         alert('Unable to initialize WebGL. Your browser or machine may not support it.');
         return;
     }
+
+    console.log(gl.getParameter(gl.VERSION));
   
     // Initialize a shader program
     const vertexSource = document.getElementById("vertex-shader").text;
@@ -114,7 +124,9 @@ function processVideo(video) {
       videoTexture: gl.getUniformLocation(shaderProgram, 'videoTexture'),
       pixelSize: gl.getUniformLocation(shaderProgram, 'pixelSize'),
       stage: gl.getUniformLocation(shaderProgram, 'stage'),
-      flipY: gl.getUniformLocation(shaderProgram, 'flipY'),      
+      flipY: gl.getUniformLocation(shaderProgram, 'flipY'),    
+      offsets: gl.getUniformLocation(shaderProgram, 'offsets'),  
+      weights: gl.getUniformLocation(shaderProgram, 'weights'),  
     }
    
     // Binding buffers
@@ -181,65 +193,95 @@ function processVideo(video) {
       gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);     
       gl.bindTexture(gl.TEXTURE_2D, tempTextures[frameBufferID]);             
     }
-
-    function render() {      
-      if(downscalePrev!=downscale_value.value){
-        downscalePrev=downscale_value.value;
-        x = video.videoWidth/downscale_value.value;
-        y = video.videoHeight/downscale_value.value;    
-        gl.bindTexture(gl.TEXTURE_2D, tempTextures[0]);      
-        gl.texImage2D(
-          gl.TEXTURE_2D, 0, gl.RGBA, x, y, 0,
-          gl.RGBA, gl.UNSIGNED_BYTE, null);
-        gl.bindTexture(gl.TEXTURE_2D, tempTextures[1]);      
-          gl.texImage2D(
-            gl.TEXTURE_2D, 0, gl.RGBA, x, y, 0,
-            gl.RGBA, gl.UNSIGNED_BYTE, null); 
-      }
-
-      if (copyVideo){
   
-        // 1. Update original texture
-        gl.bindTexture(gl.TEXTURE_2D, originalTexture);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video);
-      
-        // 2. Ping-ponging data from framebuffer[0] to framebuffer[1] 
-        gl.uniform1i(uniformLocations.flipY, 1);
-
-        var n = rounds_value.value;
-
-        for(var i=1; i<=n; ++i){
-          if(i==n){
-            drawToFrameBuffer(0);
-          }
-          else{
-            drawToFrameBuffer(0);
-            drawToFrameBuffer(1);
-          }
-        }      
-
-        // 3. Drawing to canvas
-        gl.uniform1i(uniformLocations.flipY, -1);
-        gl.uniform1i(uniformLocations.stage, 1);
-        gl.bindFramebuffer(gl.FRAMEBUFFER, null);    
-        gl.viewport(0, 0, X, Y);             
-        gl.uniform2fv(uniformLocations.pixelSize, [radius_value.value*1.0/X, radius_value.value*1.0/Y]);
-        gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);   
-      }        
-      
-      // FPS
-      var now = new Date().getTime();
-      frameCount++;
-      elapsedTime += (now - lastTime);     
-      lastTime = now;     
-      if(elapsedTime >= 1000) {
-          fps = frameCount;
-          frameCount = 0;
-          elapsedTime -= 1000;     
-          fps_field.innerHTML = fps;
+    // These produce different blurs
+    var kernels = {
+      linear: {
+        offsets : [0.0, 1.43478, 3.34783, 5.26087, 7.17391],
+        weights : [0.16819, 0.27277, 0.116901, 0.0240679, 0.00211122],
+      },
+      discrete: {
+        offsets : [0.0, 1.0, 2.0, 3.0, 4.0],
+        weights : [0.20236, 0.179044, 0.124009, 0.067234, 0.028532],
       }
+    }
 
-      requestAnimationFrame(render);
+    gl.uniform1fv(uniformLocations.offsets, kernels.discrete.offsets);
+    gl.uniform1fv(uniformLocations.weights, kernels.discrete.weights);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);  
+     
+    function render() {          
+        if(textureChanged){
+            downscalePrev=downscale_value.value;
+            x = video.videoWidth/downscale_value.value;
+            y = video.videoHeight/downscale_value.value;    
+            gl.bindTexture(gl.TEXTURE_2D, tempTextures[0]);      
+            gl.texImage2D(
+              gl.TEXTURE_2D, 0, gl.RGBA, x, y, 0,
+              gl.RGBA, gl.UNSIGNED_BYTE, null);
+            gl.bindTexture(gl.TEXTURE_2D, tempTextures[1]);      
+              gl.texImage2D(
+                gl.TEXTURE_2D, 0, gl.RGBA, x, y, 0,
+                gl.RGBA, gl.UNSIGNED_BYTE, null); 
+            if(linearSampling_checkbox.checked){         
+                gl.uniform1fv(uniformLocations.offsets, kernels.linear.offsets);
+                gl.uniform1fv(uniformLocations.weights, kernels.linear.weights);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR); 
+            }
+            else{
+                gl.uniform1fv(uniformLocations.offsets, kernels.discrete.offsets);
+                gl.uniform1fv(uniformLocations.weights, kernels.discrete.weights);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST); 
+            }
+            textureChanged = false;
+        }
+
+        if (copyVideo){
+    
+          // 1. Update original texture
+          gl.bindTexture(gl.TEXTURE_2D, originalTexture);
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video);
+        
+          // 2. Ping-ponging data from framebuffer[0] to framebuffer[1] 
+          gl.uniform1i(uniformLocations.flipY, 1);
+
+          var n = (radius_value.value==0) ? 1 : rounds_value.value;
+
+          for(var i=1; i<=n; ++i){
+            if(i==n){
+              drawToFrameBuffer(0);
+            }
+            else{
+              drawToFrameBuffer(0);
+              drawToFrameBuffer(1);
+            }
+          }      
+
+          // 3. Drawing to canvas
+          gl.uniform1i(uniformLocations.flipY, -1);
+          gl.uniform1i(uniformLocations.stage, 1);
+          gl.bindFramebuffer(gl.FRAMEBUFFER, null);    
+          gl.viewport(0, 0, X, Y);             
+          gl.uniform2fv(uniformLocations.pixelSize, [radius_value.value*1.0/X, radius_value.value*1.0/Y]);
+          gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);   
+        }        
+        
+        // FPS
+        var now = new Date().getTime();
+        frameCount++;
+        elapsedTime += (now - lastTime);     
+        lastTime = now;     
+        if(elapsedTime >= 1000) {
+            fps = frameCount;
+            frameCount = 0;
+            elapsedTime -= 1000;     
+            fps_field.innerHTML = fps;
+        }
+
+        requestAnimationFrame(render);
     }
 
     lastTime = new Date().getTime();

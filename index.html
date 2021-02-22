@@ -15,8 +15,7 @@
       uniform int stage;
       uniform int flipY;
 
-      //uniform highp float offset[5];
-      //uniform highp float weight[5];
+      uniform highp float offsets[5]; 
 
       void main(void) {
         gl_Position = vec4(vPosition,0.0,1.0);
@@ -26,15 +25,29 @@
         uv.y = uv.y * float(flipY); 
         uv = uv*0.5+0.5; 
 
-        for(int i=-4; i<=4; i++){
-            float i_float = float(i);
-            if( mod(float(stage), 2.0) == 0.0){
-              blurTextureCoords[i+4] = uv + vec2(pixelSize.x * i_float,0.0);
-            }
-            else{
-              blurTextureCoords[i+4] = uv + vec2(0.0, pixelSize.y * i_float);
-            }            
+        blurTextureCoords[0] = uv + vec2(pixelSize.x * offsets[0],0.0); 
+       
+        if( mod(float(stage), 2.0) == 0.0){
+          blurTextureCoords[1] = uv + vec2(pixelSize.x * offsets[1],0.0);      
+          blurTextureCoords[2] = uv - vec2(pixelSize.x * offsets[1],0.0);
+          blurTextureCoords[3] = uv + vec2(pixelSize.x * offsets[2],0.0);      
+          blurTextureCoords[4] = uv - vec2(pixelSize.x * offsets[2],0.0);
+          blurTextureCoords[5] = uv + vec2(pixelSize.x * offsets[3],0.0);      
+          blurTextureCoords[6] = uv - vec2(pixelSize.x * offsets[3],0.0);
+          blurTextureCoords[7] = uv + vec2(pixelSize.x * offsets[4],0.0);      
+          blurTextureCoords[8] = uv - vec2(pixelSize.x * offsets[4],0.0);      
         }
+        else{
+          blurTextureCoords[1] = uv + vec2(0.0, pixelSize.y * offsets[1]);      
+          blurTextureCoords[2] = uv - vec2(0.0, pixelSize.y * offsets[1]);
+          blurTextureCoords[3] = uv + vec2(0.0, pixelSize.y * offsets[2]);      
+          blurTextureCoords[4] = uv - vec2(0.0, pixelSize.y * offsets[2]);
+          blurTextureCoords[5] = uv + vec2(0.0, pixelSize.y * offsets[3]);      
+          blurTextureCoords[6] = uv - vec2(0.0, pixelSize.y * offsets[3]);
+          blurTextureCoords[7] = uv + vec2(0.0, pixelSize.y * offsets[4]);      
+          blurTextureCoords[8] = uv - vec2(0.0, pixelSize.y * offsets[4]);          
+        }            
+        
       }
     </script>
 
@@ -42,24 +55,22 @@
     <script  id="fragment-shader" type="x-shader/x-fragment">
         varying highp vec2 blurTextureCoords[9];
         uniform sampler2D videoTexture;  // Tells the shader whcih texture unit  to use. 0 by default.
+        uniform highp float weights[5];
 
         void main(void){    
           highp vec4 sum = vec4(0.0);
 
-          // http://dev.theomader.com/gaussian-kernel-calculator/
-          // sigma = 3, kernel size= 9
+          // kernel size 9x9
 
-          sum += texture2D(videoTexture, blurTextureCoords[0]) * 0.028532;
-          sum += texture2D(videoTexture, blurTextureCoords[1]) * 0.067234;
-          sum += texture2D(videoTexture, blurTextureCoords[2]) * 0.124009;
-          sum += texture2D(videoTexture, blurTextureCoords[3]) * 0.179044;
-
-          sum += texture2D(videoTexture, blurTextureCoords[4]) * 0.20236;
-          
-          sum += texture2D(videoTexture, blurTextureCoords[5]) * 0.179044;
-          sum += texture2D(videoTexture, blurTextureCoords[6]) * 0.124009;
-          sum += texture2D(videoTexture, blurTextureCoords[7]) * 0.067234;
-          sum += texture2D(videoTexture, blurTextureCoords[8]) * 0.028532;
+          sum += texture2D(videoTexture, blurTextureCoords[0]) * weights[0];
+          sum += texture2D(videoTexture, blurTextureCoords[1]) * weights[1];
+          sum += texture2D(videoTexture, blurTextureCoords[2]) * weights[1];
+          sum += texture2D(videoTexture, blurTextureCoords[3]) * weights[2];
+          sum += texture2D(videoTexture, blurTextureCoords[4]) * weights[2];          
+          sum += texture2D(videoTexture, blurTextureCoords[5]) * weights[3];
+          sum += texture2D(videoTexture, blurTextureCoords[6]) * weights[3];
+          sum += texture2D(videoTexture, blurTextureCoords[7]) * weights[4];
+          sum += texture2D(videoTexture, blurTextureCoords[8]) * weights[4];
 
           gl_FragColor = vec4(sum.rgb, 1.0);
         }
@@ -68,24 +79,34 @@
 
   <body>
     <div id="fps"></div>
-    <div id="radius" class="slider">
+    <div id="radius" class="myslider">
       <label>offset</label>
-      <input id="radius_input" class="slider_range" type="range" value="1" min="0" max="6">
-      <output id="radius_value" class="slider_value">1</output>
+      <input id="radius_input" class="myslider_range" type="range" value="1" min="0" max="10">
+      <output id="radius_value" class="myslider_value">1</output>
     </div>    
 
-    <div id="rounds" class="slider">
+    <div id="rounds" class="myslider">
       <label>rounds</label>
-          <input id="rounds_input" class="slider_range" type="range" value="5" min="1" max="30">
-      <output id="rounds_value" class="slider_value">5</output>
+          <input id="rounds_input" class="myslider_range" type="range" value="5" min="1" max="30">
+      <output id="rounds_value" class="myslider_value">5</output>
     </div>    
 
-    <div id="downscale" class="slider">
+    <div id="downscale" class="myslider">
       <label>downscale</label>
-          <input id="downscale_input" class="slider_range" type="range" value="4" min="1" max="10">
-      <output id="downscale_value" class="slider_value">4</output>
+          <input id="downscale_input" class="myslider_range" type="range" value="4" min="1" max="20">
+      <output id="downscale_value" class="myslider_value">4</output>
     </div>    
 
+    <div id="linear" class="myslider">
+      <label>linear sampling</label>
+      <label class="switch">
+        <input id="ls_checkbox" type="checkbox">
+        <span class="slider round"></span>
+      </label>
+     
+    </div>    
+    
+   
 
     <canvas id="glcanvas"></canvas>
     
