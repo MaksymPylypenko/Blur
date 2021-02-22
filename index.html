@@ -13,14 +13,17 @@
       varying highp vec2 blurTextureCoords[9];
       uniform highp vec2 pixelSize;
       uniform int stage;
-      uniform highp float flipY;
+      uniform int flipY;
+
+      //uniform highp float offset[5];
+      //uniform highp float weight[5];
 
       void main(void) {
         gl_Position = vec4(vPosition,0.0,1.0);
         highp vec2 uv; 
         
         uv = vPosition; 
-        uv.y = uv.y * flipY; 
+        uv.y = uv.y * float(flipY); 
         uv = uv*0.5+0.5; 
 
         for(int i=-4; i<=4; i++){
@@ -64,17 +67,23 @@
   </head>
 
   <body>
-
+    <div id="fps"></div>
     <div id="radius" class="slider">
       <label>offset</label>
-      <input id="radius_input" class="slider_range" type="range" value="2" min="0" max="10">
-      <output id="radius_value" class="slider_value">2</output>
+      <input id="radius_input" class="slider_range" type="range" value="1" min="0" max="6">
+      <output id="radius_value" class="slider_value">1</output>
     </div>    
 
     <div id="rounds" class="slider">
       <label>rounds</label>
-      <input id="rounds_input" class="slider_range" type="range" value="1" min="1" max="10">
-      <output id="rounds_value" class="slider_value">1</output>
+          <input id="rounds_input" class="slider_range" type="range" value="5" min="1" max="30">
+      <output id="rounds_value" class="slider_value">5</output>
+    </div>    
+
+    <div id="downscale" class="slider">
+      <label>downscale</label>
+          <input id="downscale_input" class="slider_range" type="range" value="4" min="1" max="10">
+      <output id="downscale_value" class="slider_value">4</output>
     </div>    
 
 

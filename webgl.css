@@ -21,16 +21,23 @@ html, body{
 	box-sizing: border-box;
 }
 
+#fps{
+	left:60px;
+}
 
 #radius{
 	top:0px;
 }
 
 #rounds{
-	top:50px;
+	top:40px;
 }
 
-.slider {
+#downscale{
+	top:80px;
+}
+
+.slider, #fps{
     color:white;
     font-size:large;
     font-weight: bold;

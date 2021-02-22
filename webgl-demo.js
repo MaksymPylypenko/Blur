@@ -2,7 +2,7 @@
 var copyVideo = false;
 
 
-// Sliders
+// UI
 var radius_input = document.getElementById('radius_input');
 var radius_value = document.getElementById('radius_value');
 
@@ -17,6 +17,15 @@ rounds_input.oninput = function() {
   rounds_value.value = this.value;
 };
 
+var downscale_input = document.getElementById('downscale_input');
+var downscale_value = document.getElementById('downscale_value');
+var downscalePrev = downscale_value; // tracking changes, to avoid reinitializing stuff every frame
+
+downscale_input.oninput = function() {
+  downscale_value.value = this.value;
+};
+
+const fps_field = document.getElementById('fps');
 
 
 // Start
@@ -50,7 +59,7 @@ function main() {
     // resolution of the video
 
     video.addEventListener('loadedmetadata', function(e) {
-        setupCanvas(video); 
+      processVideo(video); 
     }, true);
 
     video.src = url;
@@ -65,200 +74,198 @@ function main() {
 }
 
 
-function setupCanvas(video) {
+function processVideo(video) {
+ 
+    // Performance indicator
+    var elapsedTime = 0;
+    var frameCount = 0;
+    var lastTime = 0;
+
     const canvas = document.querySelector('#glcanvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
 
-    var image = {
-      x: video.videoWidth,
-      y: video.videoHeight,
-    };
-
-    // image.x/=2;
-    // image.y/=2;
-
-    canvas.width = image.x;
-    canvas.height = image.y;
-
-    // Fill the contect preserving the original ratio
+    // Preserving the original ratio using CSS
     canvas.style.width = "100vw";
-    canvas.style.height = 100 * image.y / image.x + "vw";
+    canvas.style.height = 100 * video.videoHeight / video.videoWidth + "vw";
     canvas.style.maxHeight = "100vh";
-    canvas.style.maxWidth = 100 * image.x / image.y + "vh";
+    canvas.style.maxWidth = 100 * video.videoWidth / video.videoHeight + "vh";
 
     const gl = canvas.getContext('webgl');
 
     // If we don't have a GL context, give up now
-
     if (!gl) {
         alert('Unable to initialize WebGL. Your browser or machine may not support it.');
         return;
     }
   
     // Initialize a shader program
-
     const vertexSource = document.getElementById("vertex-shader").text;
     const fragmentSource = document.getElementById("fragment-shader").text;
     shaderProgram = linkShaders(gl, vertexSource, fragmentSource);  
 
-    // Look up which attributes & uniform variables 
-    // our shader program is using
+    // Define attributes & uniform variables 
+    // for our shader program
+    const attributeLocations = {
+      vertexPosition: gl.getAttribLocation(shaderProgram, 'vPosition'),
+    }
 
-    const programInfo = {
-        attribLocations: {
-            vertexPosition: gl.getAttribLocation(shaderProgram, 'vPosition'),
-        },
-        uniformLocations: {
-            videoTexture: gl.getUniformLocation(shaderProgram, 'videoTexture'),
-            pixelSize: gl.getUniformLocation(shaderProgram, 'pixelSize'),
-            stage: gl.getUniformLocation(shaderProgram, 'stage'),
-            flipY: gl.getUniformLocation(shaderProgram, 'flipY'),
-        }
-    };
-
-    // Here's where we call the routine that builds all the
-    // objects we'll be drawing.
-
-    bindBuffers(gl, programInfo.attribLocations);
+    const uniformLocations = {
+      videoTexture: gl.getUniformLocation(shaderProgram, 'videoTexture'),
+      pixelSize: gl.getUniformLocation(shaderProgram, 'pixelSize'),
+      stage: gl.getUniformLocation(shaderProgram, 'stage'),
+      flipY: gl.getUniformLocation(shaderProgram, 'flipY'),      
+    }
+   
+    // Binding buffers
+    const positions = [1.0, 1.0, -1.0, 1.0, 1.0, -1.0, -1.0, -1.0];
+    const indices = [ 0,1,3,0,3,2 ];
+  
+    const positionBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
+  
+    const indexBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,new Uint16Array(indices), gl.STATIC_DRAW);
+  
+    // Tell WebGL how to pull out the positions from the position
+    // buffer into the vertexPosition attribute    
+    {
+      gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+      gl.vertexAttribPointer(attributeLocations.vertexPosition,2,gl.FLOAT,false,0,0);
+      gl.enableVertexAttribArray(attributeLocations.vertexPosition);
+    }
+  
+    // Tell WebGL which indices to use to index the vertices
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
     gl.useProgram(shaderProgram); 
     
-    // ... 
-    // https://webglfundamentals.org/webgl/lessons/webgl-image-processing-continued.html
-    
-    // create 2 textures and attach them to framebuffers.
-    var textures = [];
+    // Make 2 temporary framebuffers to store intermidiate results
+    // Explained here: https://webglfundamentals.org/webgl/lessons/webgl-image-processing-continued.html
+        
+    var x = video.videoWidth/downscale_value.value;
+    var y = video.videoHeight/downscale_value.value;
+    var X = video.videoWidth;
+    var Y = video.videoHeight;
+
+    var originalTexture = initTexture(gl,X,Y);
+    var tempTextures = [];
     var framebuffers = [];
+
+
     for (var ii = 0; ii < 2; ++ii) {
-      var texture = initTexture(gl);
-      textures.push(texture);
-  
-      // make the texture the same size as the image
+      var texture = initTexture(gl,x,y);
+      tempTextures.push(texture);
+        
       gl.texImage2D(
-          gl.TEXTURE_2D, 0, gl.RGBA, image.x, image.y, 0,
-          gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.TEXTURE_2D, 0, gl.RGBA, x, y, 0,
+        gl.RGBA, gl.UNSIGNED_BYTE, null);
   
-      // Create a framebuffer
+      // create a framebuffer
       var fbo = gl.createFramebuffer();
       framebuffers.push(fbo);
       gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
   
-      // Attach a texture to it.
+      // attach a texture to it.
       gl.framebufferTexture2D(
           gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
     }
-          
-    // ...
+             
 
-    function draw(from, to, stage){
-      gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffers[to]);    
-      gl.uniform1i(programInfo.uniformLocations.stage, stage==-1 ? 1 : stage);
-      gl.uniform1f(programInfo.uniformLocations.flipY, stage==-1 ? -1.0:1.0);
-      gl.bindTexture(gl.TEXTURE_2D, textures[from]);             
-      gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
+    function drawToFrameBuffer(frameBufferID){     
+      gl.uniform1i(uniformLocations.stage, frameBufferID%2==0 ? 0:1);  
+      gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffers[frameBufferID]);    
+      gl.viewport(0, 0, x, y);  
+      gl.uniform2fv(uniformLocations.pixelSize, [radius_value.value*1.0/x, radius_value.value*1.0/y]);
+      gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);     
+      gl.bindTexture(gl.TEXTURE_2D, tempTextures[frameBufferID]);             
     }
 
-    function render() {
+    function render() {      
+      if(downscalePrev!=downscale_value.value){
+        downscalePrev=downscale_value.value;
+        x = video.videoWidth/downscale_value.value;
+        y = video.videoHeight/downscale_value.value;    
+        gl.bindTexture(gl.TEXTURE_2D, tempTextures[0]);      
+        gl.texImage2D(
+          gl.TEXTURE_2D, 0, gl.RGBA, x, y, 0,
+          gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.bindTexture(gl.TEXTURE_2D, tempTextures[1]);      
+          gl.texImage2D(
+            gl.TEXTURE_2D, 0, gl.RGBA, x, y, 0,
+            gl.RGBA, gl.UNSIGNED_BYTE, null); 
+      }
 
-        gl.uniform2fv(programInfo.uniformLocations.pixelSize, [radius_value.value*1.0/image.x, radius_value.value*1.0/image.y]);
-       
-        if (copyVideo) {
-            updateTexture(gl, textures[1], video);
-        }
+      if (copyVideo){
+  
+        // 1. Update original texture
+        gl.bindTexture(gl.TEXTURE_2D, originalTexture);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video);
+      
+        // 2. Ping-ponging data from framebuffer[0] to framebuffer[1] 
+        gl.uniform1i(uniformLocations.flipY, 1);
 
-        var rounds = rounds_value.value;
-        for(i=1; i<=rounds; ++i){
-          if(i==rounds){
-            draw(1,0,0);
+        var n = rounds_value.value;
+
+        for(var i=1; i<=n; ++i){
+          if(i==n){
+            drawToFrameBuffer(0);
           }
           else{
-            draw(1,0,0);
-            draw(0,1,1);
-          }          
-        }        
-        draw(0,null,-1.0); // drawing to canvas, framebuffer = null
-          
-        requestAnimationFrame(render);
+            drawToFrameBuffer(0);
+            drawToFrameBuffer(1);
+          }
+        }      
+
+        // 3. Drawing to canvas
+        gl.uniform1i(uniformLocations.flipY, -1);
+        gl.uniform1i(uniformLocations.stage, 1);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);    
+        gl.viewport(0, 0, X, Y);             
+        gl.uniform2fv(uniformLocations.pixelSize, [radius_value.value*1.0/X, radius_value.value*1.0/Y]);
+        gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);   
+      }        
+      
+      // FPS
+      var now = new Date().getTime();
+      frameCount++;
+      elapsedTime += (now - lastTime);     
+      lastTime = now;     
+      if(elapsedTime >= 1000) {
+          fps = frameCount;
+          frameCount = 0;
+          elapsedTime -= 1000;     
+          fps_field.innerHTML = fps;
+      }
+
+      requestAnimationFrame(render);
     }
+
+    lastTime = new Date().getTime();
     requestAnimationFrame(render);
 
 }
 
-//
-// initBuffers
-//
-// Initialize the buffers we'll need. 
-function initBuffers(gl) {
-
-    const positions = [1.0, 1.0, -1.0, 1.0, 1.0, -1.0, -1.0, -1.0];
-    const indices = [ 0,1,3,0,3,2 ];
-
-    const positionBuffer = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
-
-    const indexBuffer = gl.createBuffer();
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
-    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,new Uint16Array(indices), gl.STATIC_DRAW);
-
-    return {
-        position: positionBuffer,
-        indices: indexBuffer,
-    };
-}
 
 //
 // Initialize a texture.
 //
-function initTexture(gl) {
-  
+function initTexture(gl, width, height) {  
     var texture = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, texture);
- 
-    // Set up texture so we can render any size image and so we are
-    // working with pixels.
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
- 
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR); 
+
+    gl.texImage2D(
+      gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0,
+      gl.RGBA, gl.UNSIGNED_BYTE, null);
     return texture;
 }
 
-//
-// copy the video texture
-//
-function updateTexture(gl, texture, video) {
-    gl.bindTexture(gl.TEXTURE_2D, texture);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video);
-}
 
-
-//
-// 
-//
-function bindBuffers(gl, attribLocations){
-
-  const positions = [1.0, 1.0, -1.0, 1.0, 1.0, -1.0, -1.0, -1.0];
-  const indices = [ 0,1,3,0,3,2 ];
-
-  const positionBuffer = gl.createBuffer();
-  gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
-
-  const indexBuffer = gl.createBuffer();
-  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
-  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,new Uint16Array(indices), gl.STATIC_DRAW);
-
-  // Tell WebGL how to pull out the positions from the position
-  // buffer into the vertexPosition attribute
-  {
-    gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-    gl.vertexAttribPointer(attribLocations.vertexPosition,2,gl.FLOAT,false,0,0);
-    gl.enableVertexAttribArray(attribLocations.vertexPosition);
-  }
-
-  // Tell WebGL which indices to use to index the vertices
-  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
-}
 
 //
 // Initialize a shader program, so WebGL knows how to draw our data
@@ -278,6 +285,7 @@ function linkShaders(gl, vsSource, fsSource) {
     }     
     return shaderProgram;
 }
+
 
 //
 // creates a shader of the given type, uploads the source and
