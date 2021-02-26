@@ -1,5 +1,7 @@
 # Blur
-Real time gaussian blur in webgl.
+Real time gaussian blur in webgl. [Try](https://maksympylypenko.github.io/Blur/)
+
+![Image](https://github.com/MaksymPylypenko/Blur/blob/main/example.png)
  
 # Optimizations
  
@@ -14,7 +16,7 @@ Real time gaussian blur in webgl.
 - adds flexibility
  
 ## Downscaling
-- less pixels --> dramatic increase in computation --> can do more rounds
+- less pixels --> dramatic increase in performance --> can do more rounds
 - has small overhead.
 - may result in visual artifacts, especially when there is lots of movement.
  
@@ -24,6 +26,7 @@ Real time gaussian blur in webgl.
 
 
 # Resources used:
+* [video](https://test-videos.co.uk/bigbuckbunny/mp4-h264) 1920 x 1080 (20MB)
 * https://rastergrid.com/blog/2010/09/efficient-gaussian-blur-with-linear-sampling/
 * https://webglfundamentals.org/webgl/lessons/webgl-image-processing-continued.html
 * https://venturebeat.com/2017/07/13/an-investigation-of-fast-real-time-gpu-based-image-blur-algorithms/
